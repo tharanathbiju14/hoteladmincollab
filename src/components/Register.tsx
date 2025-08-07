@@ -1,12 +1,8 @@
-/* ───────────────────────────────────────────────────────────────
-   Register.tsx (Vite edition) – fully wired to Spring backend
-   ----------------------------------------------------------- */
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Eye, EyeOff, Lock, Mail, User, Phone } from 'lucide-react';
 
-/* 📝  Replace with your own exported Admin interface if it
-   already exists elsewhere. */
+
 export interface Admin {
   id: string;
   adminName: string;
@@ -15,7 +11,6 @@ export interface Admin {
 }
 
 interface RegisterProps {
-  onRegister: (admin: Admin) => void;
   onSwitchToLogin: () => void;
 }
 
@@ -51,7 +46,7 @@ const validatePassword = (value: string) => {
 /* ──────────────────────────────────────────
    Component
 ─────────────────────────────────────────── */
-const Register: React.FC<RegisterProps> = ({ onRegister, onSwitchToLogin }) => {
+const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
   const [formData, setFormData] = useState<FormData>({
     adminName: '',
     identifier: '',
@@ -137,17 +132,10 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onSwitchToLogin }) => {
         headers: { 'Content-Type': 'application/json' },
       });
 
-      const admin: Admin = {
-        id: Date.now().toString(),
-        adminName: payload.adminName,
-        adminEmail: payload.adminEmail || undefined,
-        adminPhoneNumber: payload.adminPhoneNumber,
-      };
+      // Show success message and redirect to login
+      alert(data || 'Registration successful! Please login with your credentials.');
 
-      onRegister(admin);
-      alert(data || 'Admin Registration Successful');
-
-      // (optional) reset
+      // Reset form
       setFormData({
         adminName: '',
         identifier: '',
@@ -155,6 +143,10 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onSwitchToLogin }) => {
         password: '',
         confirmPassword: '',
       });
+
+      // Redirect to login page after successful registration
+      onSwitchToLogin();
+
     } catch (err: any) {
       alert(err.response?.data ?? 'Registration failed / server unreachable');
     } finally {
