@@ -2,17 +2,18 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   ArrowLeft, Search, Filter, Edit, MapPin, Star, Mail, Phone, DollarSign, Eye,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Maximize2, X
 } from 'lucide-react';
 import { Hotel, Amenity } from '../App';
 import HotelEditModal from './HotelEditModal';
-import API_BASE from '../api-config'; // Import the centralized URL
 
 interface HotelManagementProps {
   amenities: Amenity[];
   onHotelUpdate: (id: string, updatedHotel: Partial<Hotel>) => void;
   onBack: () => void;
 }
+
+const API_BASE = 'http://192.168.1.13:8080/hotel';
 
 const HotelManagement: React.FC<HotelManagementProps> = ({
   amenities,
@@ -26,6 +27,7 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
   const [editingHotel, setEditingHotel] = useState<Hotel | null>(null);
   const [viewingHotel, setViewingHotel] = useState<Hotel | null>(null);
   const [viewingHotelImages, setViewingHotelImages] = useState<string[]>([]);
+  const [openImage, setOpenImage] = useState<string | null>(null);
 
   useEffect(() => {
     // Fetch districts
@@ -35,7 +37,7 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
       })
       .catch(() => alert('Failed to load districts'));
 
-    // Fetch hotels
+    // Fetch hotels (amenities, hotelTypeName, landscapeTypeName are included)
     axios.get(`${API_BASE}/fetch-all-hotels`)
       .then(res => {
         setHotels(res.data.map((h: any) => ({
@@ -57,33 +59,16 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
     setEditingHotel(hotel);
   };
 
-  // Fetch all images (uploaded + URLs) for a hotel
-  const fetchAllHotelImages = async (hotelId: string | number) => {
-    try {
-      const [uploadedRes, urlRes] = await Promise.all([
-        axios.get(`${API_BASE}/get-hotel-images?hotelId=${hotelId}`),
-        axios.get(`${API_BASE}/get-hotel-image-urls?hotelId=${hotelId}`)
-      ]);
-      const uploadedImages = (uploadedRes.data || []).map(
-        (img: any) => `data:image/jpeg;base64,${img.base64Image}`
-      );
-      const urlImages = (urlRes.data || []).map((img: any) => img.urls);
-      const allImages = [...uploadedImages, ...urlImages];
-      console.log('Fetched images:', allImages);
-      return allImages;
-    } catch (err) {
-      console.error('Error fetching images:', err);
-      return [];
-    }
-  };
-
-  // When viewing a hotel, fetch its images
-  const handleView = async (hotel: Hotel) => {
+  // When viewing a hotel, combine all images (uploaded + URLs)
+  const handleView = (hotel: Hotel) => {
     setViewingHotel(hotel);
-    setViewingHotelImages([]); // Clear previous images
-    const images = await fetchAllHotelImages(hotel.id);
-    console.log('Setting images for modal:', images);
-    setViewingHotelImages(images);
+
+    // Combine all images: uploaded (base64) and URLs
+    const uploadedImages = (hotel.hotelImageUploadBase64 || []).map(
+      (base64: string) => `data:image/jpeg;base64,${base64}`
+    );
+    const urlImages = hotel.hotelImageUrls || [];
+    setViewingHotelImages([...uploadedImages, ...urlImages]);
   };
 
   const handleSaveEdit = (updatedHotel: Partial<Hotel>) => {
@@ -93,32 +78,79 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
     }
   };
 
-  const getAmenityNames = (amenityIds: string[]) => {
-    return amenityIds
-      .map(id => amenities.find(amenity => amenity.id === id)?.name)
-      .filter(Boolean)
-      .join(', ');
+  // Just join the amenity names (they are already names, not IDs)
+  const getAmenityNames = (amenitiesArr: string[]) => {
+    return (amenitiesArr || []).join(', ');
   };
 
-  // Simple carousel component
+  // Auto-scrolling carousel for grid
+  const GridImageCarousel: React.FC<{ images: string[], onImageClick?: (img: string) => void }> = ({ images, onImageClick }) => {
+    const [current, setCurrent] = useState(0);
+
+    // Auto-scroll every 2.5 seconds
+    useEffect(() => {
+      if (images.length <= 1) return;
+      const interval = setInterval(() => {
+        setCurrent(prev => (prev + 1) % images.length);
+      }, 2500);
+      return () => clearInterval(interval);
+    }, [images]);
+
+    useEffect(() => { setCurrent(0); }, [images]);
+
+    if (!images.length) {
+      return (
+        <div className="aspect-[16/9] bg-gradient-to-r from-blue-400 to-blue-600 flex items-center justify-center">
+          <div className="text-white text-center">
+            <div className="text-4xl mb-2">🏨</div>
+            <p className="text-sm opacity-90">No Images</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="relative aspect-[16/9] bg-gray-100 flex items-center justify-center overflow-hidden cursor-pointer group">
+        <img
+          src={images[current]}
+          alt={`Hotel Image ${current + 1}`}
+          className="object-cover w-full h-full transition-transform group-hover:scale-105"
+          onClick={() => onImageClick && onImageClick(images[current])}
+        />
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex space-x-1">
+          {images.map((_, idx) => (
+            <span
+              key={idx}
+              className={`block w-2 h-2 rounded-full ${idx === current ? 'bg-blue-600' : 'bg-gray-300'}`}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // Manual carousel for modal
   const ImageCarousel: React.FC<{ images: string[] }> = ({ images }) => {
     const [current, setCurrent] = useState(0);
+
     useEffect(() => { setCurrent(0); }, [images]);
+
     if (images.length === 0) return (
-      <div className="h-48 bg-gradient-to-r from-blue-400 to-blue-600 flex items-center justify-center">
+      <div className="aspect-[16/9] bg-gradient-to-r from-blue-400 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
           <div className="text-4xl mb-2">🏨</div>
           <p className="text-sm opacity-90">No Images</p>
         </div>
       </div>
     );
+
     return (
-      <div className="relative h-48 bg-gray-100 flex items-center justify-center overflow-hidden">
+      <div className="relative aspect-[16/9] bg-gray-100 flex items-center justify-center overflow-hidden rounded-lg">
         <img
           src={images[current]}
           alt={`Hotel Image ${current + 1}`}
-          className="object-cover w-full h-full"
-          onError={e => (e.currentTarget.style.display = 'none')}
+          className="object-cover w-full h-full cursor-pointer"
+          onClick={() => setOpenImage(images[current])}
         />
         {images.length > 1 && (
           <>
@@ -138,6 +170,13 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
             </button>
           </>
         )}
+        <button
+          className="absolute top-2 right-2 bg-white bg-opacity-70 rounded-full p-1"
+          onClick={() => setOpenImage(images[current])}
+          aria-label="Open Fullscreen"
+        >
+          <Maximize2 className="w-5 h-5" />
+        </button>
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex space-x-1">
           {images.map((_, idx) => (
             <span
@@ -149,6 +188,21 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
       </div>
     );
   };
+
+  // Open image modal
+  const OpenImageModal = ({ image, onClose }: { image: string, onClose: () => void }) => (
+    <div className="fixed inset-0 z-50 bg-black bg-opacity-80 flex items-center justify-center">
+      <div className="relative">
+        <img src={image} alt="Full" className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl" />
+        <button
+          onClick={onClose}
+          className="absolute top-2 right-2 bg-white bg-opacity-80 rounded-full p-2"
+        >
+          <X className="w-6 h-6 text-gray-800" />
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -208,90 +262,97 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
       {/* Hotels Grid */}
       {filteredHotels.length > 0 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredHotels.map((hotel) => (
-            <div key={hotel.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
-              {/* Hotel Images Carousel (optional: fetch on demand for grid) */}
-              <div className="h-48 bg-gradient-to-r from-blue-400 to-blue-600 flex items-center justify-center">
-                <div className="text-white text-center">
-                  <div className="text-4xl mb-2">🏨</div>
-                  <p className="text-sm opacity-90">Images in modal</p>
-                </div>
-              </div>
+          {filteredHotels.map((hotel) => {
+            // Combine images for grid preview
+            const uploadedImages = (hotel.hotelImageUploadBase64 || []).map(
+              (base64: string) => `data:image/jpeg;base64,${base64}`
+            );
+            const urlImages = hotel.hotelImageUrls || [];
+            const allImages = [...uploadedImages, ...urlImages];
 
-              <div className="p-6">
-                {/* Hotel Name & Rating */}
-                <div className="flex items-start justify-between mb-3">
-                  <h3 className="text-xl font-semibold text-gray-900 flex-1">{hotel.hotelName}</h3>
-                  {(hotel.hotelRating !== undefined && hotel.hotelRating > 0) && (
-                    <div className="flex items-center space-x-1 text-yellow-500">
-                      <Star className="w-4 h-4 fill-current" />
-                      <span className="text-sm font-medium">{hotel.hotelRating}</span>
+            return (
+              <div key={hotel.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+                {/* Hotel Image Carousel */}
+                <GridImageCarousel
+                  images={allImages}
+                  onImageClick={img => img && setOpenImage(img)}
+                />
+
+                <div className="p-6">
+                  {/* Hotel Name & Rating */}
+                  <div className="flex items-start justify-between mb-3">
+                    <h3 className="text-xl font-semibold text-gray-900 flex-1">{hotel.hotelName}</h3>
+                    {(hotel.hotelRating !== undefined && hotel.hotelRating > 0) && (
+                      <div className="flex items-center space-x-1 text-yellow-500">
+                        <Star className="w-4 h-4 fill-current" />
+                        <span className="text-sm font-medium">{hotel.hotelRating}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Description */}
+                  <p className="text-gray-600 text-sm mb-4 line-clamp-2">
+                    {hotel.hotelDescription}
+                  </p>
+
+                  {/* Location */}
+                  <div className="flex items-center space-x-2 text-gray-600 mb-3">
+                    <MapPin className="w-4 h-4" />
+                    <span className="text-sm">{hotel.district}</span>
+                  </div>
+
+                  {/* Contact */}
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-center space-x-2 text-gray-600">
+                      <Mail className="w-4 h-4" />
+                      <span className="text-sm">{hotel.hotelEmail}</span>
+                    </div>
+                    <div className="flex items-center space-x-2 text-gray-600">
+                      <Phone className="w-4 h-4" />
+                      <span className="text-sm">{hotel.hotelPhoneNumber}</span>
+                    </div>
+                  </div>
+
+                  {/* Price */}
+                  <div className="flex items-center space-x-2 mb-4">
+                    <DollarSign className="w-4 h-4 text-green-600" />
+                    <span className="text-lg font-semibold text-green-600">
+                      ₹{hotel.hotelBasicPricePerNight}
+                    </span>
+                    <span className="text-sm text-gray-600">per night</span>
+                  </div>
+
+                  {/* Amenities */}
+                  {hotel.amenities && hotel.amenities.length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-xs text-gray-500 mb-1">Amenities:</p>
+                      <p className="text-sm text-gray-700 line-clamp-1">
+                        {getAmenityNames(hotel.amenities)}
+                      </p>
                     </div>
                   )}
-                </div>
 
-                {/* Description */}
-                <p className="text-gray-600 text-sm mb-4 line-clamp-2">
-                  {hotel.hotelDescription}
-                </p>
-
-                {/* Location */}
-                <div className="flex items-center space-x-2 text-gray-600 mb-3">
-                  <MapPin className="w-4 h-4" />
-                  <span className="text-sm">{hotel.district}</span>
-                </div>
-
-                {/* Contact */}
-                <div className="space-y-2 mb-4">
-                  <div className="flex items-center space-x-2 text-gray-600">
-                    <Mail className="w-4 h-4" />
-                    <span className="text-sm">{hotel.hotelEmail}</span>
+                  {/* Actions */}
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleView(hotel)}
+                      className="flex-1 flex items-center justify-center space-x-2 bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-lg transition-colors"
+                    >
+                      <Eye className="w-4 h-4" />
+                      <span className="text-sm font-medium">View</span>
+                    </button>
+                    <button
+                      onClick={() => handleEdit(hotel)}
+                      className="flex-1 flex items-center justify-center space-x-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-2 rounded-lg transition-colors"
+                    >
+                      <Edit className="w-4 h-4" />
+                      <span className="text-sm font-medium">Edit</span>
+                    </button>
                   </div>
-                  <div className="flex items-center space-x-2 text-gray-600">
-                    <Phone className="w-4 h-4" />
-                    <span className="text-sm">{hotel.hotelPhoneNumber}</span>
-                  </div>
-                </div>
-
-                {/* Price */}
-                <div className="flex items-center space-x-2 mb-4">
-                  <DollarSign className="w-4 h-4 text-green-600" />
-                  <span className="text-lg font-semibold text-green-600">
-                    ₹{hotel.hotelBasicPricePerNight}
-                  </span>
-                  <span className="text-sm text-gray-600">per night</span>
-                </div>
-
-                {/* Amenities */}
-                {hotel.amenities && hotel.amenities.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-xs text-gray-500 mb-1">Amenities:</p>
-                    <p className="text-sm text-gray-700 line-clamp-1">
-                      {getAmenityNames(hotel.amenities)}
-                    </p>
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => handleView(hotel)}
-                    className="flex-1 flex items-center justify-center space-x-2 bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-lg transition-colors"
-                  >
-                    <Eye className="w-4 h-4" />
-                    <span className="text-sm font-medium">View</span>
-                  </button>
-                  <button
-                    onClick={() => handleEdit(hotel)}
-                    className="flex-1 flex items-center justify-center space-x-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-2 rounded-lg transition-colors"
-                  >
-                    <Edit className="w-4 h-4" />
-                    <span className="text-sm font-medium">Edit</span>
-                  </button>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
@@ -348,11 +409,11 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
                   </div>
                   <div>
                     <span className="font-medium text-gray-900">Hotel Type:</span>
-                    <p className="text-gray-600">{viewingHotel.hotelType}</p>
+                    <p className="text-gray-600">{viewingHotel.hotelTypeName || 'N/A'}</p>
                   </div>
                   <div>
                     <span className="font-medium text-gray-900">Landscape:</span>
-                    <p className="text-gray-600">{viewingHotel.landscape}</p>
+                    <p className="text-gray-600">{viewingHotel.landscapeTypeName || 'N/A'}</p>
                   </div>
                   <div>
                     <span className="font-medium text-gray-900">Rating:</span>
@@ -394,6 +455,11 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Open Image Modal */}
+      {openImage && (
+        <OpenImageModal image={openImage} onClose={() => setOpenImage(null)} />
       )}
     </div>
   );

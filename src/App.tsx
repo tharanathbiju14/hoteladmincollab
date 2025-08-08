@@ -19,7 +19,7 @@ export interface Hotel {
   hotelName: string;
   hotelDescription: string;
   hotelRating?: number;
-  hotelBasicPricePerNight: number;
+  hotelBasicPricePerNight: number | string;
   hotelAddress: string;
   district: string;
   hotelType: string;
@@ -27,7 +27,10 @@ export interface Hotel {
   location?: string;
   hotelEmail: string;
   hotelPhoneNumber: string;
-  hotelImageUrls?: string;
+  hotelImageUrls?: string[]; // <-- should be array
+  hotelImageUploadBase64?: string[]; // <-- should be array
+  hotelTypeName?: string; 
+  landscapeTypeName?: string;
   hotelImages?: File[];
   amenities?: string[];
   createdAt: Date;
