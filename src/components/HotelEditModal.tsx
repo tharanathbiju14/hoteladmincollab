@@ -63,7 +63,8 @@ const HotelEditModal: React.FC<HotelEditModalProps> = ({ hotel, amenities, onSav
     const fetchData = async () => {
       try {
         setLoading(true);
-        
+        console.log('[HotelEditModal] Fetching hotel details and related data for hotelId:', hotel.id);
+
         // Fetch all required data in parallel
         const [
           hotelDetailsRes,
@@ -76,8 +77,14 @@ const HotelEditModal: React.FC<HotelEditModalProps> = ({ hotel, amenities, onSav
           axios.get(`${API_BASE}/districts`),
           axios.get(`${API_BASE}/get-all-hotel-types`),
           axios.get(`${API_BASE}/landscape/get-all-landscapes`),
-          axios.get(`${API_BASE}/amenities`)
+          axios.get(`${API_BASE}/amenities/get-amenities-by-hotel?hotelId=${hotel.id}`)
         ]);
+
+        console.log('[HotelEditModal] Hotel details response:', hotelDetailsRes.data);
+        console.log('[HotelEditModal] Districts response:', districtsRes.data);
+        console.log('[HotelEditModal] Hotel types response:', hotelTypesRes.data);
+        console.log('[HotelEditModal] Landscapes response:', landscapesRes.data);
+        console.log('[HotelEditModal] Amenities response:', amenitiesRes.data);
 
         const hotelDetails = hotelDetailsRes.data;
         
@@ -106,7 +113,7 @@ const HotelEditModal: React.FC<HotelEditModalProps> = ({ hotel, amenities, onSav
         setSelectedAmenities((hotelDetails.amenities || []).map((a: HotelAmenity) => a.amenityId));
         
       } catch (error) {
-        console.error('Error fetching data:', error);
+        console.error('[HotelEditModal] Error fetching data:', error);
         alert('Failed to load hotel data');
       } finally {
         setLoading(false);
