@@ -13,6 +13,7 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { Hotel, Amenity } from '../App';
+import API_BASE from '../api-config'; // Import the centralized URL
 
 /* DTOs */
 interface DistrictDto {
@@ -56,8 +57,6 @@ interface FormErrors {
 }
 
 /* Constants */
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL ?? 'http://192.168.1.11:8080/hotel';
 const TOKEN = localStorage.getItem('jwt_token') ?? '';
 
 const HotelRegistration: React.FC<HotelRegistrationProps> = ({

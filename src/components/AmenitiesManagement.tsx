@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { ArrowLeft, Plus, Edit, Trash2, Save, X } from 'lucide-react';
 import { Amenity } from '../App';
+import API_BASE_URL from '../api-config'; // Import the centralized URL
 
 interface AmenitiesManagementProps {
   onBack: () => void;
@@ -19,7 +20,7 @@ const AmenitiesManagement: React.FC<AmenitiesManagementProps> = ({
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
-    axios.get('http://192.168.1.11:8080/hotel/amenities/retrieve-all-amenities')
+    axios.get(`${API_BASE_URL}/amenities/retrieve-all-amenities`)
       .then(res => {
         const mappedAmenities = res.data.map((item: any) => ({
           id: item.amenitiesId,
@@ -37,7 +38,7 @@ const AmenitiesManagement: React.FC<AmenitiesManagementProps> = ({
     const token = localStorage.getItem('jwt_token');
     if (newAmenity.name) {
       axios.post(
-        'http://192.168.1.11:8080/hotel/amenities/add',
+        `${API_BASE_URL}/amenities/add`,
         {
           amenitiesName: newAmenity.name
         },
@@ -48,7 +49,7 @@ const AmenitiesManagement: React.FC<AmenitiesManagementProps> = ({
         }
       )
       .then(() => {
-        return axios.get('4:8080/hotel/amenities/retrieve-all-amenities', {
+        return axios.get(`${API_BASE_URL}/amenities/retrieve-all-amenities`, {
           headers: {
             Authorization: `Bearer ${token}`
           }
@@ -79,7 +80,7 @@ const AmenitiesManagement: React.FC<AmenitiesManagementProps> = ({
     if (editingAmenity) {
       const token = localStorage.getItem('jwt_token'); // Retrieve the token
       axios.put(
-        `http://192.168.1.11:8080/hotel/amenities/edit-amenities`,
+        `${API_BASE_URL}/amenities/edit-amenities`,
         null,
         {
           params: {
@@ -93,7 +94,7 @@ const AmenitiesManagement: React.FC<AmenitiesManagementProps> = ({
       )
       .then(() => {
         // Refresh amenities list after editing
-        return axios.get('http://192.168.1.11:8080/hotel/amenities/retrieve-all-amenities');
+        return axios.get(`${API_BASE_URL}/amenities/retrieve-all-amenities`);
       })
       .then(res => {
         const mappedAmenities = res.data.map((item: any) => ({
@@ -117,7 +118,7 @@ const AmenitiesManagement: React.FC<AmenitiesManagementProps> = ({
     const token = localStorage.getItem('jwt_token'); // Retrieve the token
     if (window.confirm('Are you sure you want to delete this amenity?')) {
       axios.delete(
-        `http://192.168.1.11:8080/hotel/amenities/delete-amenities?amenitiesId=${id}`,
+        `${API_BASE_URL}/amenities/delete-amenities?amenitiesId=${id}`,
         {
           headers: {
             Authorization: `Bearer ${token}`
@@ -125,7 +126,7 @@ const AmenitiesManagement: React.FC<AmenitiesManagementProps> = ({
         }
       )
       .then(() => {
-        return axios.get('http://192.168.1.11:8080/hotel/amenities/retrieve-all-amenities', {
+        return axios.get(`${API_BASE_URL}/amenities/retrieve-all-amenities`, {
           headers: {
             Authorization: `Bearer ${token}`
           }

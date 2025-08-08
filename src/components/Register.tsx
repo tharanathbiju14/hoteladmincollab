@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Eye, EyeOff, Lock, Mail, User, Phone } from 'lucide-react';
+import API_BASE from '../api-config'; // Import the centralized URL
 
 
 export interface Admin {
@@ -124,9 +125,6 @@ const Register: React.FC<RegisterProps> = ({ onSwitchToLogin }) => {
         adminPhoneNumber: isEmail ? formData.phoneNumber : formData.identifier,
         adminPassword: formData.password,
       };
-
-      // 👉  Vite exposes any env var that starts with VITE_
-      const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://192.168.1.11:8080/hotel';
 
       const { data } = await axios.post(`${API_BASE}/admin/admin-register`, payload, {
         headers: { 'Content-Type': 'application/json' },

@@ -6,14 +6,13 @@ import {
 } from 'lucide-react';
 import { Hotel, Amenity } from '../App';
 import HotelEditModal from './HotelEditModal';
+import API_BASE from '../api-config'; // Import the centralized URL
 
 interface HotelManagementProps {
   amenities: Amenity[];
   onHotelUpdate: (id: string, updatedHotel: Partial<Hotel>) => void;
   onBack: () => void;
 }
-
-const API_BASE = 'http://192.168.1.11:8080/hotel';
 
 const HotelManagement: React.FC<HotelManagementProps> = ({
   amenities,
