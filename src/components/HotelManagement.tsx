@@ -13,6 +13,11 @@ interface HotelManagementProps {
   onBack: () => void;
 }
 
+interface District {
+  id: number;
+  name: string;
+}
+
 const API_BASE = 'http://192.168.1.13:8080/hotel';
 
 const HotelManagement: React.FC<HotelManagementProps> = ({
@@ -28,25 +33,45 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
   const [viewingHotel, setViewingHotel] = useState<Hotel | null>(null);
   const [viewingHotelImages, setViewingHotelImages] = useState<string[]>([]);
   const [openImage, setOpenImage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch districts
-    axios.get(`${API_BASE}/districts`)
-      .then(res => {
-        setDistricts(['All Districts', ...res.data.map((d: any) => d.name)]);
-      })
-      .catch(() => alert('Failed to load districts'));
-
-    // Fetch hotels (amenities, hotelTypeName, landscapeTypeName are included)
-    axios.get(`${API_BASE}/fetch-all-hotels`)
-      .then(res => {
-        setHotels(res.data.map((h: any) => ({
-          ...h,
-          createdAt: h.createdAt ? new Date(h.createdAt) : new Date(),
-        })));
-      })
-      .catch(() => alert('Failed to load hotels'));
+    fetchData();
   }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch districts and hotels in parallel
+      const [districtsRes, hotelsRes] = await Promise.all([
+        axios.get(`${API_BASE}/districts`),
+        axios.get(`${API_BASE}/fetch-all-hotels`)
+      ]);
+
+      // Set districts
+      const districtNames = districtsRes.data.map((d: District) => d.name);
+      setDistricts(['All Districts', ...districtNames]);
+
+      // Set hotels
+      const hotelsData = hotelsRes.data.map((h: any) => ({
+        ...h,
+        id: h.hotelId?.toString() || h.id?.toString(),
+        createdAt: h.createdAt ? new Date(h.createdAt) : new Date(),
+        // Map amenities to names if they come as objects
+        amenities: h.amenities ? h.amenities.map((a: any) => 
+          typeof a === 'string' ? a : a.name
+        ) : []
+      }));
+      
+      setHotels(hotelsData);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      alert('Failed to load data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredHotels = hotels.filter(hotel => {
     const matchesSearch = hotel.hotelName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -55,30 +80,68 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
     return matchesSearch && matchesDistrict;
   });
 
-  const handleEdit = (hotel: Hotel) => {
-    setEditingHotel(hotel);
-  };
-
-  // When viewing a hotel, combine all images (uploaded + URLs)
-  const handleView = (hotel: Hotel) => {
-    setViewingHotel(hotel);
-
-    // Combine all images: uploaded (base64) and URLs
-    const uploadedImages = (hotel.hotelImageUploadBase64 || []).map(
-      (base64: string) => `data:image/jpeg;base64,${base64}`
-    );
-    const urlImages = hotel.hotelImageUrls || [];
-    setViewingHotelImages([...uploadedImages, ...urlImages]);
-  };
-
-  const handleSaveEdit = (updatedHotel: Partial<Hotel>) => {
-    if (editingHotel) {
-      onHotelUpdate(editingHotel.id, updatedHotel);
-      setEditingHotel(null);
+  const handleEdit = async (hotel: Hotel) => {
+    try {
+      // Fetch complete hotel data before editing
+      const response = await axios.get(`${API_BASE}/get-by-hotel-id?hotelId=${hotel.id}`);
+      const completeHotelData = {
+        ...hotel,
+        ...response.data,
+        id: hotel.id, // Keep the original ID
+      };
+      setEditingHotel(completeHotelData);
+    } catch (error) {
+      console.error('Error fetching hotel details:', error);
+      alert('Failed to load hotel details. Please try again.');
     }
   };
 
-  // Just join the amenity names (they are already names, not IDs)
+  const handleView = async (hotel: Hotel) => {
+    try {
+      setViewingHotel(hotel);
+      
+      // Fetch hotel images
+      const [imageUrlsRes, imagesRes] = await Promise.all([
+        axios.get(`${API_BASE}/get-hotel-image-urls?hotelId=${hotel.id}`).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE}/get-hotel-images?hotelId=${hotel.id}`).catch(() => ({ data: [] }))
+      ]);
+
+      // Combine all images: uploaded (base64) and URLs
+      const uploadedImages = (imagesRes.data || []).map(
+        (base64: string) => `data:image/jpeg;base64,${base64}`
+      );
+      const urlImages = imageUrlsRes.data || [];
+      setViewingHotelImages([...uploadedImages, ...urlImages]);
+    } catch (error) {
+      console.error('Error fetching hotel images:', error);
+      // Still show the modal even if images fail to load
+      setViewingHotelImages([]);
+    }
+  };
+
+  const handleSaveEdit = async (updatedHotel: Partial<Hotel>) => {
+    if (editingHotel) {
+      try {
+        // Update the hotel in local state
+        setHotels(prev => prev.map(hotel => 
+          hotel.id === editingHotel.id 
+            ? { ...hotel, ...updatedHotel }
+            : hotel
+        ));
+        
+        // Also call the parent callback
+        onHotelUpdate(editingHotel.id, updatedHotel);
+        
+        setEditingHotel(null);
+        
+        // Optionally refresh data to ensure consistency
+        await fetchData();
+      } catch (error) {
+        console.error('Error updating hotel in management:', error);
+      }
+    }
+  };
+
   const getAmenityNames = (amenitiesArr: string[]) => {
     return (amenitiesArr || []).join(', ');
   };
@@ -204,6 +267,32 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
     </div>
   );
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={onBack}
+              className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span>Back to Dashboard</span>
+            </button>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Hotel Management</h1>
+              <p className="text-gray-600 mt-1">View and manage all registered hotels</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading hotels...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -263,7 +352,7 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
       {filteredHotels.length > 0 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           {filteredHotels.map((hotel) => {
-            // Combine images for grid preview
+            // For grid preview, use existing hotel images if available
             const uploadedImages = (hotel.hotelImageUploadBase64 || []).map(
               (base64: string) => `data:image/jpeg;base64,${base64}`
             );
@@ -305,7 +394,7 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
                   <div className="space-y-2 mb-4">
                     <div className="flex items-center space-x-2 text-gray-600">
                       <Mail className="w-4 h-4" />
-                      <span className="text-sm">{hotel.hotelEmail}</span>
+                      <span className="text-sm truncate">{hotel.hotelEmail}</span>
                     </div>
                     <div className="flex items-center space-x-2 text-gray-600">
                       <Phone className="w-4 h-4" />
@@ -320,6 +409,20 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
                       ₹{hotel.hotelBasicPricePerNight}
                     </span>
                     <span className="text-sm text-gray-600">per night</span>
+                  </div>
+
+                  {/* Hotel Type & Landscape */}
+                  <div className="mb-4 space-y-1">
+                    {hotel.hotelTypeName && (
+                      <p className="text-xs text-gray-500">
+                        Type: <span className="text-gray-700">{hotel.hotelTypeName}</span>
+                      </p>
+                    )}
+                    {hotel.landscapeTypeName && (
+                      <p className="text-xs text-gray-500">
+                        Landscape: <span className="text-gray-700">{hotel.landscapeTypeName}</span>
+                      </p>
+                    )}
                   </div>
 
                   {/* Amenities */}
@@ -389,7 +492,7 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
                   onClick={() => setViewingHotel(null)}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
-                  <ArrowLeft className="w-6 h-6" />
+                  <X className="w-6 h-6" />
                 </button>
               </div>
 
@@ -417,7 +520,7 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
                   </div>
                   <div>
                     <span className="font-medium text-gray-900">Rating:</span>
-                    <p className="text-gray-600">{viewingHotel.hotelRating}/5</p>
+                    <p className="text-gray-600">{viewingHotel.hotelRating || 0}/5</p>
                   </div>
                 </div>
 
@@ -432,7 +535,7 @@ const HotelManagement: React.FC<HotelManagementProps> = ({
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="font-medium text-gray-900">Email:</span>
-                    <p className="text-gray-600">{viewingHotel.hotelEmail}</p>
+                    <p className="text-gray-600 break-words">{viewingHotel.hotelEmail}</p>
                   </div>
                   <div>
                     <span className="font-medium text-gray-900">Phone:</span>

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { X, Save, Star, DollarSign, MapPin, Mail, Phone } from 'lucide-react';
 import { Hotel, Amenity } from '../App';
 
@@ -9,23 +10,29 @@ interface HotelEditModalProps {
   onClose: () => void;
 }
 
-const districts = [
-  'Colombo', 'Gampaha', 'Kalutara', 'Kandy', 'Matale', 'Nuwara Eliya',
-  'Galle', 'Matara', 'Hambantota', 'Jaffna', 'Kilinochchi', 'Mannar',
-  'Vavuniya', 'Mullaitivu', 'Batticaloa', 'Ampara', 'Trincomalee',
-  'Kurunegala', 'Puttalam', 'Anuradhapura', 'Polonnaruwa', 'Badulla',
-  'Moneragala', 'Ratnapura', 'Kegalle'
-];
+interface HotelType {
+  id: number;
+  typeName: string;
+}
 
-const hotelTypes = [
-  'Luxury Resort', 'Boutique Hotel', 'Business Hotel', 'Budget Hotel',
-  'Beach Resort', 'Mountain Lodge', 'City Hotel', 'Heritage Hotel'
-];
+interface Landscape {
+  id: number;
+  landscapeName: string;
+}
 
-const landscapes = [
-  'Beach Front', 'Mountain View', 'City Center', 'Lake View',
-  'Forest View', 'Garden View', 'Sea View', 'Hill Country'
-];
+interface District {
+  id: number;
+  name: string;
+}
+
+interface HotelAmenity {
+  amenityId: number;
+  name: string;
+  icon: string;
+  category: string;
+}
+
+const API_BASE = 'http://192.168.1.13:8080/hotel';
 
 const HotelEditModal: React.FC<HotelEditModalProps> = ({ hotel, amenities, onSave, onClose }) => {
   const [formData, setFormData] = useState({
@@ -35,15 +42,79 @@ const HotelEditModal: React.FC<HotelEditModalProps> = ({ hotel, amenities, onSav
     hotelBasicPricePerNight: hotel.hotelBasicPricePerNight,
     hotelAddress: hotel.hotelAddress,
     district: hotel.district,
-    hotelType: hotel.hotelType,
-    landscape: hotel.landscape,
+    hotelTypeId: 0,
+    landscapeId: 0,
     location: hotel.location || '',
     hotelEmail: hotel.hotelEmail,
     hotelPhoneNumber: hotel.hotelPhoneNumber,
-    selectedAmenities: hotel.amenities || [],
   });
 
+  const [districts, setDistricts] = useState<District[]>([]);
+  const [hotelTypes, setHotelTypes] = useState<HotelType[]>([]);
+  const [landscapes, setLandscapes] = useState<Landscape[]>([]);
+  const [hotelAmenities, setHotelAmenities] = useState<HotelAmenity[]>([]);
+  const [allAmenities, setAllAmenities] = useState<Amenity[]>([]);
+  const [selectedAmenities, setSelectedAmenities] = useState<number[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch all required data in parallel
+        const [
+          hotelDetailsRes,
+          districtsRes, 
+          hotelTypesRes, 
+          landscapesRes,
+          amenitiesRes
+        ] = await Promise.all([
+          axios.get(`${API_BASE}/get-by-hotel-id?hotelId=${hotel.id}`),
+          axios.get(`${API_BASE}/districts`),
+          axios.get(`${API_BASE}/get-all-hotel-types`),
+          axios.get(`${API_BASE}/landscape/get-all-landscapes`),
+          axios.get(`${API_BASE}/amenities`)
+        ]);
+
+        const hotelDetails = hotelDetailsRes.data;
+        
+        // Set form data from fetched hotel details
+        setFormData({
+          hotelName: hotelDetails.hotelName,
+          hotelDescription: hotelDetails.hotelDescription,
+          hotelRating: hotelDetails.hotelRating || 0,
+          hotelBasicPricePerNight: hotelDetails.hotelBasicPricePerNight,
+          hotelAddress: hotelDetails.hotelAddress,
+          district: hotelDetails.district,
+          hotelTypeId: hotelDetails.hotelTypes?.id || 0,
+          landscapeId: hotelDetails.landscape?.id || 0,
+          location: hotelDetails.location || '',
+          hotelEmail: hotelDetails.hotelEmail,
+          hotelPhoneNumber: hotelDetails.hotelPhoneNumber,
+        });
+
+        setDistricts(districtsRes.data);
+        setHotelTypes(hotelTypesRes.data);
+        setLandscapes(landscapesRes.data);
+        setAllAmenities(amenitiesRes.data);
+        
+        // Set hotel's current amenities
+        setHotelAmenities(hotelDetails.amenities || []);
+        setSelectedAmenities((hotelDetails.amenities || []).map((a: HotelAmenity) => a.amenityId));
+        
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        alert('Failed to load hotel data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [hotel.id]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -53,8 +124,8 @@ const HotelEditModal: React.FC<HotelEditModalProps> = ({ hotel, amenities, onSav
     if (!formData.hotelBasicPricePerNight) newErrors.hotelBasicPricePerNight = 'Price is required';
     if (!formData.hotelAddress) newErrors.hotelAddress = 'Address is required';
     if (!formData.district) newErrors.district = 'District is required';
-    if (!formData.hotelType) newErrors.hotelType = 'Hotel type is required';
-    if (!formData.landscape) newErrors.landscape = 'Landscape is required';
+    if (!formData.hotelTypeId) newErrors.hotelTypeId = 'Hotel type is required';
+    if (!formData.landscapeId) newErrors.landscapeId = 'Landscape is required';
     if (!formData.hotelEmail) newErrors.hotelEmail = 'Email is required';
     if (!formData.hotelPhoneNumber) newErrors.hotelPhoneNumber = 'Phone number is required';
 
@@ -71,13 +142,88 @@ const HotelEditModal: React.FC<HotelEditModalProps> = ({ hotel, amenities, onSav
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (validateForm()) {
+    
+    if (!validateForm()) return;
+
+    try {
+      setSaving(true);
+
+      // Prepare form data for multipart request
+      const formDataToSend = new FormData();
+      
+      const hotelUpdateData = {
+        hotelName: formData.hotelName,
+        hotelDescription: formData.hotelDescription,
+        hotelRating: formData.hotelRating,
+        hotelBasicPricePerNight: formData.hotelBasicPricePerNight,
+        hotelAddress: formData.hotelAddress,
+        district: formData.district,
+        hotelTypeId: formData.hotelTypeId,
+        landscapeId: formData.landscapeId,
+        location: formData.location,
+        hotelEmail: formData.hotelEmail,
+        hotelPhoneNumber: formData.hotelPhoneNumber
+      };
+
+      formDataToSend.append('hotelData', new Blob([JSON.stringify(hotelUpdateData)], {
+        type: 'application/json'
+      }));
+
+      // Update hotel details
+      await axios.put(`${API_BASE}/edit-hotel-details?hotelId=${hotel.id}`, formDataToSend, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      // Handle amenities updates
+      const currentAmenityIds = hotelAmenities.map(a => a.amenityId);
+      const amenitiesToAdd = selectedAmenities.filter(id => !currentAmenityIds.includes(id));
+      const amenitiesToRemove = currentAmenityIds.filter(id => !selectedAmenities.includes(id));
+
+      // Add new amenities
+      if (amenitiesToAdd.length > 0) {
+        await axios.post(`${API_BASE}/amenities/assign-to-hotel`, {
+          hotelId: parseInt(hotel.id),
+          amenityIds: amenitiesToAdd
+        });
+      }
+
+      // Remove amenities
+      if (amenitiesToRemove.length > 0) {
+        await axios.delete(`${API_BASE}/amenities/remove-amenities-from-hotel`, {
+          data: {
+            hotelId: parseInt(hotel.id),
+            amenityIds: amenitiesToRemove
+          }
+        });
+      }
+
+      // Call onSave with updated data
+      const selectedAmenityNames = allAmenities
+        .filter(a => selectedAmenities.includes(parseInt(a.id)))
+        .map(a => a.name);
+
+      const hotelType = hotelTypes.find(ht => ht.id === formData.hotelTypeId);
+      const landscape = landscapes.find(l => l.id === formData.landscapeId);
+
       onSave({
         ...formData,
-        amenities: formData.selectedAmenities,
+        hotelTypeName: hotelType?.typeName,
+        landscapeTypeName: landscape?.landscapeName,
+        amenities: selectedAmenityNames,
       });
+
+      alert('Hotel updated successfully!');
+      onClose();
+
+    } catch (error) {
+      console.error('Error updating hotel:', error);
+      alert('Failed to update hotel. Please try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -88,12 +234,26 @@ const HotelEditModal: React.FC<HotelEditModalProps> = ({ hotel, amenities, onSav
     }
   };
 
-  const toggleAmenity = (amenityId: string) => {
-    const updated = formData.selectedAmenities.includes(amenityId)
-      ? formData.selectedAmenities.filter(id => id !== amenityId)
-      : [...formData.selectedAmenities, amenityId];
-    setFormData(prev => ({ ...prev, selectedAmenities: updated }));
+  const toggleAmenity = (amenityId: number) => {
+    setSelectedAmenities(prev => 
+      prev.includes(amenityId)
+        ? prev.filter(id => id !== amenityId)
+        : [...prev, amenityId]
+    );
   };
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-xl p-8">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading hotel data...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -208,7 +368,7 @@ const HotelEditModal: React.FC<HotelEditModalProps> = ({ hotel, amenities, onSav
                 >
                   <option value="">Select District</option>
                   {districts.map(district => (
-                    <option key={district} value={district}>{district}</option>
+                    <option key={district.id} value={district.name}>{district.name}</option>
                   ))}
                 </select>
                 {errors.district && <p className="mt-1 text-sm text-red-600">{errors.district}</p>}
@@ -219,18 +379,18 @@ const HotelEditModal: React.FC<HotelEditModalProps> = ({ hotel, amenities, onSav
                   Hotel Type *
                 </label>
                 <select
-                  value={formData.hotelType}
-                  onChange={(e) => handleInputChange('hotelType', e.target.value)}
+                  value={formData.hotelTypeId}
+                  onChange={(e) => handleInputChange('hotelTypeId', parseInt(e.target.value))}
                   className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    errors.hotelType ? 'border-red-500' : 'border-gray-300'
+                    errors.hotelTypeId ? 'border-red-500' : 'border-gray-300'
                   }`}
                 >
-                  <option value="">Select Hotel Type</option>
+                  <option value={0}>Select Hotel Type</option>
                   {hotelTypes.map(type => (
-                    <option key={type} value={type}>{type}</option>
+                    <option key={type.id} value={type.id}>{type.typeName}</option>
                   ))}
                 </select>
-                {errors.hotelType && <p className="mt-1 text-sm text-red-600">{errors.hotelType}</p>}
+                {errors.hotelTypeId && <p className="mt-1 text-sm text-red-600">{errors.hotelTypeId}</p>}
               </div>
 
               <div>
@@ -238,18 +398,18 @@ const HotelEditModal: React.FC<HotelEditModalProps> = ({ hotel, amenities, onSav
                   Landscape *
                 </label>
                 <select
-                  value={formData.landscape}
-                  onChange={(e) => handleInputChange('landscape', e.target.value)}
+                  value={formData.landscapeId}
+                  onChange={(e) => handleInputChange('landscapeId', parseInt(e.target.value))}
                   className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    errors.landscape ? 'border-red-500' : 'border-gray-300'
+                    errors.landscapeId ? 'border-red-500' : 'border-gray-300'
                   }`}
                 >
-                  <option value="">Select Landscape</option>
+                  <option value={0}>Select Landscape</option>
                   {landscapes.map(landscape => (
-                    <option key={landscape} value={landscape}>{landscape}</option>
+                    <option key={landscape.id} value={landscape.id}>{landscape.landscapeName}</option>
                   ))}
                 </select>
-                {errors.landscape && <p className="mt-1 text-sm text-red-600">{errors.landscape}</p>}
+                {errors.landscapeId && <p className="mt-1 text-sm text-red-600">{errors.landscapeId}</p>}
               </div>
 
               <div>
@@ -311,13 +471,13 @@ const HotelEditModal: React.FC<HotelEditModalProps> = ({ hotel, amenities, onSav
                 Select Amenities
               </label>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {amenities.map((amenity) => (
+                {allAmenities.map((amenity) => (
                   <button
                     key={amenity.id}
                     type="button"
-                    onClick={() => toggleAmenity(amenity.id)}
+                    onClick={() => toggleAmenity(parseInt(amenity.id))}
                     className={`flex items-center space-x-2 p-3 rounded-lg border transition-colors ${
-                      formData.selectedAmenities.includes(amenity.id)
+                      selectedAmenities.includes(parseInt(amenity.id))
                         ? 'bg-blue-50 border-blue-500 text-blue-700'
                         : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
                     }`}
@@ -335,15 +495,26 @@ const HotelEditModal: React.FC<HotelEditModalProps> = ({ hotel, amenities, onSav
                 type="button"
                 onClick={onClose}
                 className="px-6 py-2 text-gray-600 hover:text-gray-900 transition-colors"
+                disabled={saving}
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors"
+                disabled={saving}
+                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors disabled:opacity-50"
               >
-                <Save className="w-4 h-4" />
-                <span>Save Changes</span>
+                {saving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Save Changes</span>
+                  </>
+                )}
               </button>
             </div>
           </form>
